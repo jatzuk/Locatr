@@ -7,6 +7,10 @@ class GalleryItem {
     lateinit var title: String
     lateinit var id: String
     lateinit var owner: String
+    @SerializedName("lat")
+    var lat: Double = 0.0
+    @SerializedName("lon")
+    var lon: Double = 0.0
 
     @SerializedName("url_s")
     var url: String = ""

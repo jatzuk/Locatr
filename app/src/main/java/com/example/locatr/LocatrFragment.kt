@@ -14,19 +14,28 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentActivity
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.common.api.GoogleApiClient
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
-import kotlinx.android.synthetic.main.fragment_locatr.*
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.gms.maps.model.MarkerOptions
 import java.io.IOException
 import java.lang.ref.WeakReference
 
-class LocatrFragment : Fragment() {
+class LocatrFragment : SupportMapFragment() {
     private lateinit var client: GoogleApiClient
+    private var map: GoogleMap? = null
+    private var mapImage: Bitmap? = null
     private lateinit var progressBar: ProgressBar
+    private lateinit var mapItem: GalleryItem
+    private lateinit var currentLocation: Location
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,17 +51,13 @@ class LocatrFragment : Fragment() {
                 }
             })
             .build()
+
+        getMapAsync {
+            map = it
+            updateUI()
+        }
     }
 
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View? {
-        val v = inflater.inflate(R.layout.fragment_locatr, container, false)
-        progressBar = v.findViewById(R.id.progress)
-        return v
-    }
 
     override fun onStart() {
         super.onStart()
@@ -112,7 +117,7 @@ class LocatrFragment : Fragment() {
         }
         LocationServices.FusedLocationApi.requestLocationUpdates(client, request) {
             Log.i(LOG_TAG, "Got a fix: $it")
-            SearchTask(activity!!, progressBar).execute(it)
+            SearchTask(this).execute(it)
         }
     }
 
@@ -120,6 +125,34 @@ class LocatrFragment : Fragment() {
         activity!!,
         LOCATION_PERMISSIONS[0]
     ) == PackageManager.PERMISSION_GRANTED
+
+    private fun updateUI() {
+        if (map == null || mapImage == null) return
+        val itemPoint = LatLng(mapItem.lat, mapItem.lon)
+        val myPoint = LatLng(currentLocation.latitude, currentLocation.longitude)
+
+        val itemBitmap = BitmapDescriptorFactory.fromBitmap(mapImage)
+        val itemMarker = MarkerOptions()
+            .position(itemPoint)
+            .icon(itemBitmap)
+        val myMarker = MarkerOptions()
+            .position(myPoint)
+
+        with(map!!) {
+            clear()
+            addMarker(itemMarker)
+            addMarker(myMarker)
+        }
+
+        val bounds = LatLngBounds.Builder()
+            .include(itemPoint)
+            .include(myPoint)
+            .build()
+
+        val margin = resources.getDimensionPixelSize(R.dimen.map_insert_margin)
+        val update = CameraUpdateFactory.newLatLngBounds(bounds, margin)
+        map!!.animateCamera(update)
+    }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -132,21 +165,24 @@ class LocatrFragment : Fragment() {
         }
     }
 
-    private class SearchTask(reference: FragmentActivity, progressBar: ProgressBar) :
-        AsyncTask<Location, Unit, Unit>() {
-        private val activity = WeakReference<FragmentActivity>(reference)
-        private val progressBar = WeakReference<ProgressBar>(progressBar)
-        private lateinit var galleryItem: GalleryItem
+    private class SearchTask(reference: Fragment) : AsyncTask<Location, Unit, Unit>() {
+        private val fragment = WeakReference<Fragment>(reference)
         private lateinit var bitmap: Bitmap
+        private lateinit var galleryItem: GalleryItem
+        private lateinit var location: Location
 
         override fun onPreExecute() {
-            progressBar.get()?.visibility = View.VISIBLE
+//            progressBar.get()?.visibility = View.VISIBLE
+
         }
 
         override fun doInBackground(vararg params: Location?) {
+            location = params[0]!!
             val items = FlickrFetchr.searchPhotos(params[0]!!)
             if (items.isEmpty()) return
             galleryItem = items[0]
+            galleryItem.lat = 33.751599
+            galleryItem.lon = -84.324167
 
             try {
                 val bytes = FlickrFetchr.getUrlBytes(galleryItem.url)
@@ -157,8 +193,15 @@ class LocatrFragment : Fragment() {
         }
 
         override fun onPostExecute(result: Unit?) {
-            activity.get()?.findViewById<ImageView>(R.id.image)?.setImageBitmap(bitmap)
-            progressBar.get()?.visibility = View.GONE
+//            activity.get()?.findViewById<ImageView>(R.id.image)?.setImageBitmap(bitmap)
+//            progressBar.get()?.visibility = View.GONE
+
+            with(fragment.get()!! as LocatrFragment) {
+                mapImage = bitmap
+                mapItem = galleryItem
+                currentLocation = location
+                updateUI()
+            }
         }
     }
 
